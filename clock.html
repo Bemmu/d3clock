@@ -1,0 +1,309 @@
+<!DOCTYPE html>
+<!--
+First draft. All rights reserved Bemmu Sepponen 2014.
+-->
+<meta charset="utf-8">
+<body>
+<script src="d3.js"></script>
+<script>
+
+var symbols = {
+  '0' : [
+    '..ooo..',
+    '.o...o.',
+    '.o...o.',
+    '.o...o.',
+    '.o...o.',
+    '.o...o.',
+    '..ooo..'
+  ],
+  '1' : [
+    '...o...',
+    '..oo...',
+    '...o...',
+    '...o...',
+    '...o...',
+    '...o...',
+    '.ooooo.'
+  ],
+  '2' : [
+    '..ooo..',
+    '.o...o.',
+    '.....o.',
+    '....o..',
+    '...o...',
+    '..o....',
+    '.ooooo.'
+  ],
+  '3' : [
+    '..ooo..',
+    '.o...o.',
+    '.....o.',
+    '...oo..',
+    '.....o.',
+    '.o...o.',
+    '..ooo..'
+  ],
+  '4' : [
+    '....o..',
+    '...oo..',
+    '..o.o..',
+    '.o..o..',
+    '.ooooo.',
+    '....o..',
+    '....o..'
+  ],
+  '5' : [
+    '.ooooo.',
+    '.o.....',
+    '.oooo..',
+    '.....o.',
+    '.....o.',
+    '.o...o.',
+    '..ooo..'
+  ],
+  '6' : [
+    '..ooo..',
+    '.o...o.',
+    '.o.....',
+    '.oooo..',
+    '.o...o.',
+    '.o...o.',
+    '..ooo..'
+  ],
+  '7' : [
+    '.ooooo.',
+    '.....o.',
+    '....o..',
+    '...o...',
+    '...o...',
+    '...o...',
+    '...o...'
+  ],
+  '8' : [
+    '..ooo..',
+    '.o...o.',
+    '.o...o.',
+    '..ooo..',
+    '.o...o.',
+    '.o...o.',
+    '..ooo..'
+  ],
+  '9' : [
+    '..ooo..',
+    '.o...o.',
+    '.o...o.',
+    '..oooo.',
+    '.....o.',
+    '.o...o.',
+    '..ooo..'
+  ],
+  ':' : [
+    '.......',
+    '...o...',
+    '...o...',
+    '.......',
+    '...o...',
+    '...o...',
+    '.......'
+  ]
+};
+
+var symbolWidth = symbols["1"][0].length;
+var symbolHeight = symbols["1"].length;
+var gridXCells = "11:11:11".length * symbolWidth;
+var gridYCells = symbolHeight;
+
+var width = 960, // of canvas
+    height = 500;
+
+var nodes = [];
+var step = Math.min(width / gridXCells, height / gridYCells);
+
+nodes.push({
+  x:0,y:0
+}); // root
+
+var xPadding = width - step * gridXCells;
+var yPadding = height - step * gridYCells;
+
+// For iterating each cell in grid
+var iter = function (f) {
+  for (var y = 0; y < gridYCells; y++) {
+    for (var x = 0; x < gridXCells; x++) {
+      f(step * x + xPadding*0.5 + step*0.5, step * y + yPadding*0.5 + step*0.5);
+    }
+  }
+};
+
+// Make the invisible grid of nodes representing the clock pixels that will act as anchors for links.
+// Because AFAIK you can't link to arbitrary coordinates in D3, has to be some node there.
+iter(function (x, y) {
+  nodes.push({
+    x : x,
+    y : y+ height/3,
+    radius : step * 0.5,
+    fixed : true
+  });  
+});
+
+// Aand now actually make the visible shit
+iter(function (x, y) {
+  nodes.push({
+    x : x,
+    y : y - height*1.5,
+    radius : step * 0.5 * 0.6,
+    fixed : false
+  });  
+});
+
+// Anchor to attach circles that are not part of the current time symbols
+nodes.push({
+  x : 0,
+  y : 0,
+  radius : step * 0.5,
+  fixed : true
+});
+
+var root = nodes[0];
+var color = d3.scale.category10();
+
+root.radius = 0;
+root.fixed = true;
+
+var force;
+
+// Show time string like "12:34:56" using D3 force physics by setting up proper links
+function clockFace(s) {
+
+  var links = [];
+  var offsetX = 0;
+
+  for (var i = 0; i < s.length; i++) {
+    var chToRender = s.charAt(i);
+    for (var symbolY = 0; symbolY < symbolHeight; symbolY++) {
+      for (var symbolX = 0; symbolX < symbolWidth; symbolX++) {
+        var isSet = symbols[chToRender][symbolY].charAt(symbolX) == 'o';
+
+        // For symbol pixels that are set, link the invisible anchor to the corresponding visible node
+        var anchorIndex = offsetX + symbolX + symbolY * gridXCells;
+        var nodeIndex = anchorIndex + gridXCells * gridYCells; // nodes follow the anchors
+
+        if (isSet) {
+          links.push({
+            source : anchorIndex,
+            target : nodeIndex,
+//            value : 1000
+          });
+        } 
+
+        // Make set nodes chargeless but non-set ones repel
+        if (isSet) {
+          nodes[nodeIndex].visibility = "visible";
+        } else {
+          nodes[nodeIndex].visibility = "hidden";
+        }
+      }
+    }
+    offsetX += symbolWidth;
+  }
+
+  force.nodes(nodes);
+  force.links(links);
+  force.start();
+}
+
+setInterval(function () {
+  var now = new Date();
+  var fs = [now.getHours, now.getMinutes, now.getSeconds],
+      face = '';
+
+  for (var i = 0; i < fs.length; i++) {
+    if (i > 0) {
+      face += ':';
+    }
+    face += ("00" + fs[i].call(now)).slice(-2);
+  }
+
+  clockFace(face);
+//  restart();
+}, 1000);
+
+var svg = d3.select("body").append("svg")
+    .attr("width", width)
+    .attr("height", height);
+
+function restart() {
+  force = d3.layout.force()
+    .gravity(0.025)
+    .charge(0)
+//    .charge(function(d, i) { return i ? 0 : -2000; })
+    .nodes(nodes)
+//    .links(links)
+    .size([width, height])
+    .start();
+
+  svg.selectAll("circle")
+      .data(nodes.slice(1))
+    .enter().append("circle")
+      .attr("r", function(d) { return d.radius; })
+      .attr("visibility", function(d) { return d.fixed?"hidden":"visible"; })
+      .style("fill", function(d, i) { return color(i % 3); });
+}
+
+restart();
+//setInterval(relink, 1000);
+
+force.on("tick", function(e) {
+  var collidingNodes = [];
+  for (var j = 0; j < nodes.length; j++) {
+    if (!nodes[j].fixed) {
+      collidingNodes.push(nodes[j]);
+    }
+  }
+
+  var q = d3.geom.quadtree(collidingNodes),
+      i = 0,
+      n = collidingNodes.length;
+
+  while (++i < n) q.visit(collide(collidingNodes[i]));
+
+  svg.selectAll("circle")
+      .attr("cx", function(d) { return d.x; })
+      .attr("cy", function(d) { return d.y; });
+});
+
+/*svg.on("mousemove", function() {
+  var p1 = d3.mouse(this);
+  root.px = p1[0];
+  root.py = p1[1];
+  force.resume();
+});*/
+
+function collide(node) {
+
+  var r = node.radius + 16,
+      nx1 = node.x - r,
+      nx2 = node.x + r,
+      ny1 = node.y - r,
+      ny2 = node.y + r;
+  return function(quad, x1, y1, x2, y2) {
+
+    if (quad.point && (quad.point !== node)) {
+      var x = node.x - quad.point.x,
+          y = node.y - quad.point.y,
+          l = Math.sqrt(x * x + y * y),
+          r = node.radius + quad.point.radius;
+      if (l < r) {
+        l = (l - r) / l * .5;
+        node.x -= x *= l;
+        node.y -= y *= l;
+        quad.point.x += x;
+        quad.point.y += y;
+      }
+    }
+    return x1 > nx2 || x2 < nx1 || y1 > ny2 || y2 < ny1;
+  };
+}
+
+</script>
